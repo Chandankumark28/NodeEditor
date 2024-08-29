@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User-Input Driven Arithmetic Node View</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #leftPanel {
+            width: 200px;
+            background-color: #f0f0f0;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        #rightPanel {
+            flex-grow: 1;
+            padding: 20px;
+            position: relative;
+            overflow: auto;
+        }
+        .node {
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            cursor: move;
+        }
+        .droppedNode {
+            position: absolute;
+            min-width: 150px;
+            min-height: 70px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            cursor: move;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #runButton {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .connection {
+            position: absolute;
+            background-color: #000;
+            height: 2px;
+            transform-origin: 0 0;
+            z-index: -1;
+        }
+        input, textarea {
+            width: 90%;
+            margin-top: 5px;
+        }
+        .output-display {
+            margin-top: 5px;
+            min-height: 20px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="leftPanel">
+        <div class="node" draggable="true" data-type="input">Input Node</div>
+        <div class="node" draggable="true" data-type="function">Function Node</div>
+        <div class="node" draggable="true" data-type="output">Output Node</div>
+        <button id="runButton">Run</button>
+    </div>
+    <div id="rightPanel"></div>
+
+    <script>
+        let nodeCounter = 0;
+        const rightPanel = document.getElementById('rightPanel');
+        const runButton = document.getElementById('runButton');
+
+        document.querySelectorAll('.node').forEach(node => {
+            node.addEventListener('dragstart', dragStart);
+        });
+
+        rightPanel.addEventListener('dragover', dragOver);
+        rightPanel.addEventListener('drop', drop);
+        runButton.addEventListener('click', runNodes);
+
+        function dragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.dataset.type);
+        }
+
+        function dragOver(e) {
+            e.preventDefault();
+        }
+
+        function drop(e) {
+            e.preventDefault();
+            const nodeType = e.dataTransfer.getData('text');
+            const node = createNode(nodeType, e.clientX, e.clientY);
+            rightPanel.appendChild(node);
+            nodeCounter++;
+            updateConnections();
+        }
+
+        function createNode(type, x, y) {
+            const node = document.createElement('div');
+            node.className = 'droppedNode';
+            node.style.left = `${x - rightPanel.offsetLeft}px`;
+            node.style.top = `${y - rightPanel.offsetTop}px`;
+            node.setAttribute('data-node-id', nodeCounter);
+
+            let content = '';
+            switch(type) {
+                case 'input':
+                    content = `<button onclick="addInput(this)">Add Input</button>`;
+                    break;
+                case 'function':
+                    content = `<textarea placeholder="Enter function (e.g., inputs.reduce((a, b) => a + b, 0))" oninput="updateNodes()"></textarea>`;
+                    break;
+                case 'output':
+                    content = `<div class="output-display"></div>`;
+                    break;
+            }
+
+            node.innerHTML = `<strong>${type.charAt(0).toUpperCase() + type.slice(1)} Node</strong><br>${content}`;
+            node.setAttribute('data-type', type);
+
+            makeDraggable(node);
+            return node;
+        }
+
+        function addInput(button) {
+            const inputContainer = document.createElement('div');
+            inputContainer.innerHTML = `
+                <input type="number" placeholder="Enter number" oninput="updateNodes()">
+                <button onclick="this.parentElement.remove(); updateNodes();">Remove</button>
+            `;
+            button.parentElement.insertBefore(inputContainer, button);
+        }
+
+        function makeDraggable(element) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            element.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') {
+                    return;
+                }
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+                updateConnections();
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+
+        function updateConnections() {
+            const connections = document.querySelectorAll('.connection');
+            connections.forEach(conn => conn.remove());
+
+            const nodes = document.querySelectorAll('.droppedNode');
+            const inputNodes = [];
+            let functionNode, outputNode;
+
+            nodes.forEach(node => {
+                if (node.getAttribute('data-type') === 'input') inputNodes.push(node);
+                if (node.getAttribute('data-type') === 'function') functionNode = node;
+                if (node.getAttribute('data-type') === 'output') outputNode = node;
+            });
+
+            inputNodes.forEach(inputNode => {
+                if (functionNode) {
+                    createConnection(inputNode, functionNode);
+                }
+            });
+
+            if (functionNode && outputNode) {
+                createConnection(functionNode, outputNode);
+            }
+        }
+
+        function createConnection(startNode, endNode) {
+            const connection = document.createElement('div');
+            connection.className = 'connection';
+            rightPanel.appendChild(connection);
+
+            const start = getNodeCenter(startNode);
+            const end = getNodeCenter(endNode);
+            const length = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
+            const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+
+            connection.style.width = `${length}px`;
+            connection.style.left = `${start.x}px`;
+            connection.style.top = `${start.y}px`;
+            connection.style.transform = `rotate(${angle}deg)`;
+        }
+
+        function getNodeCenter(node) {
+            const rect = node.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2 - rightPanel.offsetLeft,
+                y: rect.top + rect.height / 2 - rightPanel.offsetTop
+            };
+        }
+
+        function updateNodes() {
+            const inputNodes = document.querySelectorAll('.droppedNode[data-type="input"]');
+            const functionNode = document.querySelector('.droppedNode[data-type="function"]');
+            const outputNode = document.querySelector('.droppedNode[data-type="output"]');
+
+            if (inputNodes.length > 0 && functionNode && outputNode) {
+                const inputs = Array.from(inputNodes).flatMap(node => 
+                    Array.from(node.querySelectorAll('input')).map(input => parseFloat(input.value) || 0)
+                );
+                const functionCode = functionNode.querySelector('textarea').value;
+                let result;
+
+                try {
+                    // This is a simple and unsafe eval. In a real application, you'd want to use a safer method.
+                    result = new Function('inputs', `return ${functionCode}`)(inputs);
+                } catch (error) {
+                    result = 'Error: ' + error.message;
+                }
+
+                outputNode.querySelector('.output-display').textContent = result;
+            }
+        }
+
+        function runNodes() {
+            updateNodes();
+        }
+
+        // Initial connection setup
+        updateConnections();
+    </script>
+</body>
+</html>
